@@ -32,51 +32,38 @@ public:
 	template <typename OpenHandler>
 	void async_open(const ::std::string & url, OpenHandler handler)
 	{
-		processing_service_.post(__async_open<OpenHandler>(url, io_service_, boost::make_shared<boost::asio::io_service::work>(boost::ref(io_service_)), handler));
+		processing_service_.post(boost::bind(&database::__async_open<boost::_bi::protected_bind_t<OpenHandler> >, this,
+			url,
+			boost::make_shared<boost::asio::io_service::work>(boost::ref(io_service_)),
+			boost::protect(handler)));
 	}
 private:
 	/**
 	 * Open database connection in blocking mode.
 	 */
 	template <typename HandlerT>
-	struct __async_open
+	void __async_open(std::string url, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
 	{
-		std::string url_;
-		boost::asio::io_service & io_service_;
-		HandlerT handler_;
-		boost::shared_ptr<boost::asio::io_service::work> work_;
-		__async_open(std::string url, boost::asio::io_service & io_service, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
-			: url_(url)
-			, io_service_(io_service)
-			, work_(work)
-			, handler_(handler)
+		boost::system::error_code ec;
+		int result;
+		struct sqlite3 * conn = NULL;
+		if ((result = sqlite3_open(url.c_str(), &conn)) != SQLITE_OK)
 		{
+			ec.assign(result, get_error_category());
 		}
-		void operator()()
+		if (!conn)
 		{
-			boost::system::error_code ec;
-			int result;
-			struct sqlite3 * conn = NULL;
-			if ((result = sqlite3_open(url_.c_str(), &conn)) != SQLITE_OK)
-			{
-				ec.assign(result, get_error_category());
-			}
-			if (!conn)
-			{
-				ec.assign(SQLITE_NOMEM, get_error_category());
-			}
-			//conn_.reset(conn, &sqlite3_close);
-			io_service_.post(boost::bind(handler_, ec));
+			ec.assign(SQLITE_NOMEM, get_error_category());
 		}
-	};
+		conn_.reset(conn, &sqlite3_close);
+		io_service_.post(boost::bind(handler, ec));
+	}
 	/** Results of blocking methods are posted here */
 	boost::asio::io_service & io_service_;
 	/** All blocking methods gets posted here */
 	boost::asio::io_service processing_service_;
 	boost::thread processing_thread_;
 	boost::shared_ptr<struct sqlite3> conn_;
-	/** Service is busy (thread is doing something) */
-	boost::scoped_ptr<boost::asio::io_service::work> work_;
 };
 
 } }
