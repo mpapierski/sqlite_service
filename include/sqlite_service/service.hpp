@@ -20,7 +20,8 @@ class database
 public:
 	database(boost::asio::io_service & io_service)
 		: io_service_(io_service)
-		, processing_thread_(boost::bind(&boost::asio::io_service::run, &processing_service_))
+		, processing_work_(processing_service_)
+		, processing_thread_(boost::bind(&database::run_wrapper, this))
 	{
 	}
 	~database()
@@ -28,7 +29,15 @@ public:
 		processing_service_.stop();
 		processing_thread_.join();
 	}
-
+	void run_wrapper()
+	{
+		processing_service_.run();
+	}
+	/**
+	 * Open database connection asynchronous.
+	 * @param url URL parameter.
+	 * @param handler Callback which will be fired after open is done.
+	 */
 	template <typename OpenHandler>
 	void async_open(const ::std::string & url, OpenHandler handler)
 	{
@@ -51,6 +60,7 @@ private:
 		{
 			ec.assign(result, get_error_category());
 		}
+		// Connection pointer could be NULL after open.
 		if (!conn)
 		{
 			ec.assign(SQLITE_NOMEM, get_error_category());
@@ -62,7 +72,11 @@ private:
 	boost::asio::io_service & io_service_;
 	/** All blocking methods gets posted here */
 	boost::asio::io_service processing_service_;
+	/** Keep processing thread always busy */
+	boost::asio::io_service::work processing_work_;
+	/** This thread runs processing queue */
 	boost::thread processing_thread_;
+	/** Shared instance of sqlite3 connection */
 	boost::shared_ptr<struct sqlite3> conn_;
 };
 

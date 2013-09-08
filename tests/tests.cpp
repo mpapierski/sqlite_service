@@ -12,18 +12,36 @@ struct Client
 
 struct ServiceTest : ::testing::Test
 {
+	ServiceTest()
+		: timeout_timer(io_service)
+	{
+	}
+	void SetUp()
+	{
+		timeout_timer.expires_from_now(boost::posix_time::seconds(5));
+		timeout_timer.async_wait(boost::bind(&boost::asio::io_service::stop, &io_service));
+	}
+	void TearDown()
+	{
+		timeout_timer.cancel();
+	}
 	Client client;
+	boost::asio::io_service io_service;
+	boost::asio::deadline_timer timeout_timer;
 };
 
 using ::testing::SaveArg;
+using ::testing::DoAll;
+using ::testing::Invoke;
 using ::testing::_;
 
 TEST_F (ServiceTest, AsyncOpen)
 {
 	boost::system::error_code ec;
 	EXPECT_CALL(client, handle_open(_))
-		.WillOnce(SaveArg<0>(&ec));
-	boost::asio::io_service io_service;
+		.WillOnce(DoAll(
+			SaveArg<0>(&ec),
+			Invoke(boost::bind(&boost::asio::io_service::stop, &io_service))));
 	services::sqlite::database database(io_service);
 	database.async_open(":memory:", boost::bind(&Client::handle_open, &client, boost::asio::placeholders::error()));
 	io_service.run();
