@@ -36,8 +36,10 @@ public:
 private:
 	inline void begin_work()
 	{
-		assert(!work_ && "Already working!");
-		work_.reset(new boost::asio::io_service::work(io_service_));
+		if (!work_)
+		{
+			work_.reset(new boost::asio::io_service::work(io_service_));
+		}
 	}
 	inline void end_work()
 	{
