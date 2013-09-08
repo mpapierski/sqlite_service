@@ -58,6 +58,10 @@ private:
 		{
 			ec.assign(result, get_error_category());
 		}
+		if (!conn)
+		{
+			ec.assign(SQLITE_NOMEM, get_error_category());
+		}
 		conn_.reset(conn, &sqlite3_close);
 		io_service_.post(boost::bind(handler, ec));
 		end_work();
