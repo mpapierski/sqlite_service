@@ -6,8 +6,9 @@
 #include <boost/system/error_code.hpp>
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
+#include <boost/bind/protect.hpp>
 #include <boost/scoped_ptr.hpp>
-
+#include <boost/make_shared.hpp>
 #include <sqlite3.h>
 
 #include "sqlite_service/detail/error.hpp"
@@ -27,45 +28,47 @@ public:
 		processing_service_.stop();
 		processing_thread_.join();
 	}
-	template <typename HandlerT>
-	void async_open(const ::std::string & url, HandlerT callback)
+
+	template <typename OpenHandler>
+	void async_open(const ::std::string & url, OpenHandler handler)
 	{
-		begin_work();
-		processing_service_.post(boost::bind(&database::__async_open<HandlerT>, this, url, callback));
+		processing_service_.post(__async_open<OpenHandler>(url, io_service_, boost::make_shared<boost::asio::io_service::work>(boost::ref(io_service_)), handler));
 	}
 private:
-	inline void begin_work()
-	{
-		if (!work_)
-		{
-			work_.reset(new boost::asio::io_service::work(io_service_));
-		}
-	}
-	inline void end_work()
-	{
-		work_.reset();
-	}
 	/**
 	 * Open database connection in blocking mode.
 	 */
 	template <typename HandlerT>
-	void __async_open(const ::std::string & url, HandlerT handler)
+	struct __async_open
 	{
-		boost::system::error_code ec;
-		int result;
-		struct sqlite3 * conn = NULL;
-		if ((result = sqlite3_open(url.c_str(), &conn)) != SQLITE_OK)
+		std::string url_;
+		boost::asio::io_service & io_service_;
+		HandlerT handler_;
+		boost::shared_ptr<boost::asio::io_service::work> work_;
+		__async_open(std::string url, boost::asio::io_service & io_service, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
+			: url_(url)
+			, io_service_(io_service)
+			, work_(work)
+			, handler_(handler)
 		{
-			ec.assign(result, get_error_category());
 		}
-		if (!conn)
+		void operator()()
 		{
-			ec.assign(SQLITE_NOMEM, get_error_category());
+			boost::system::error_code ec;
+			int result;
+			struct sqlite3 * conn = NULL;
+			if ((result = sqlite3_open(url_.c_str(), &conn)) != SQLITE_OK)
+			{
+				ec.assign(result, get_error_category());
+			}
+			if (!conn)
+			{
+				ec.assign(SQLITE_NOMEM, get_error_category());
+			}
+			//conn_.reset(conn, &sqlite3_close);
+			io_service_.post(boost::bind(handler_, ec));
 		}
-		conn_.reset(conn, &sqlite3_close);
-		io_service_.post(boost::bind(handler, ec));
-		end_work();
-	}
+	};
 	/** Results of blocking methods are posted here */
 	boost::asio::io_service & io_service_;
 	/** All blocking methods gets posted here */
