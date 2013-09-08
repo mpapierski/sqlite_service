@@ -41,8 +41,25 @@ public:
 	template <typename OpenHandler>
 	void async_open(const ::std::string & url, OpenHandler handler)
 	{
-		processing_service_.post(boost::bind(&database::__async_open<boost::_bi::protected_bind_t<OpenHandler> >, this,
+		processing_service_.post(boost::bind(
+			&database::async_open_task<boost::_bi::protected_bind_t<OpenHandler> >,
+			this,
 			url,
+			boost::make_shared<boost::asio::io_service::work>(boost::ref(io_service_)),
+			boost::protect(handler)));
+	}
+	/**
+	 * Execute query. For each row in the result passed handler will be called.
+	 * @param query Query
+	 * @param handler Handler to be called for each row.
+	 */
+	template <typename EachHandler>
+	void async_exec(const ::std::string & query, EachHandler handler)
+	{
+		processing_service_.post(boost::bind(
+			&database::async_exec_task<boost::_bi::protected_bind_t<EachHandler> >,
+			this,
+			query,
 			boost::make_shared<boost::asio::io_service::work>(boost::ref(io_service_)),
 			boost::protect(handler)));
 	}
@@ -51,7 +68,7 @@ private:
 	 * Open database connection in blocking mode.
 	 */
 	template <typename HandlerT>
-	void __async_open(std::string url, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
+	void async_open_task(std::string url, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
 	{
 		boost::system::error_code ec;
 		int result;
@@ -67,6 +84,50 @@ private:
 		}
 		conn_.reset(conn, &sqlite3_close);
 		io_service_.post(boost::bind(handler, ec));
+	}
+	/**
+	 * This structure holds required temporary data needed by sqlite3_exec.
+	 */
+	template <typename T>
+	struct baton
+	{
+		database * self;
+		T handler;
+		baton(database * _self, T _handler)
+			: self(_self)
+			, handler(_handler)
+		{
+		}
+	};
+	/**
+	 * Execute query in blocking mode
+	 * @param query Query
+	 * @param work Work instance used to keep primary io service alive.
+	 * @param handler Handler callback called once when there is an error
+	 * or for each row in the result.
+	 */
+	template <typename HandlerT>
+	void async_exec_task(const ::std::string & query, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
+	{
+		boost::system::error_code ec;
+		int result;
+		boost::scoped_ptr<baton<HandlerT> > btn(new baton<HandlerT>(this, handler));
+		if ((result = sqlite3_exec(conn_.get(), query.c_str(), &exec_callback<HandlerT>, btn.get(), NULL)) != SQLITE_OK)
+		{
+			ec.assign(result, get_error_category());
+			io_service_.post(boost::bind(handler, ec));
+			return;
+		}
+	}
+	template <typename HandlerT>
+	static int exec_callback(void * data, int columns, char ** values, char ** column_names)
+	{
+		assert(data);
+		baton<HandlerT> * btn = static_cast<baton<HandlerT> *>(data);
+		assert(btn->self);
+		boost::system::error_code ec;
+		btn->self->io_service_.post(boost::bind(btn->handler, ec));
+		return 0;
 	}
 	/** Results of blocking methods are posted here */
 	boost::asio::io_service & io_service_;

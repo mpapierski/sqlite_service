@@ -8,6 +8,7 @@
 struct Client
 {
 	MOCK_METHOD1(handle_open, void(const boost::system::error_code & /* ec */));
+	MOCK_METHOD1(handle_exec, void(const boost::system::error_code & /* ec */));
 };
 
 struct ServiceTest : ::testing::Test
@@ -46,4 +47,18 @@ TEST_F (ServiceTest, AsyncOpen)
 	database.async_open(":memory:", boost::bind(&Client::handle_open, &client, boost::asio::placeholders::error()));
 	io_service.run();
 	ASSERT_FALSE(ec);
+}
+
+TEST_F (ServiceTest, ExecuteInvalidQuery)
+{
+	boost::system::error_code ec;
+	EXPECT_CALL(client, handle_exec(_))
+		.WillOnce(DoAll(
+			SaveArg<0>(&ec),
+			Invoke(boost::bind(&boost::asio::io_service::stop, &io_service))));
+	services::sqlite::database database(io_service);
+	database.async_exec("this is invalid query", boost::bind(&Client::handle_exec, &client, boost::asio::placeholders::error()));
+	io_service.run();
+	ASSERT_TRUE(ec);
+	EXPECT_EQ("library routine called out of sequence", ec.message());
 }
