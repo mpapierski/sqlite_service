@@ -42,6 +42,7 @@ struct ServiceTestMemory : ServiceTest
 };
 
 using ::testing::SaveArg;
+using ::testing::SaveArg;
 using ::testing::DoAll;
 using ::testing::Invoke;
 using ::testing::_;
@@ -125,3 +126,4 @@ TEST_F (ServiceTestMemory, FetchMultipleRows)
 	ASSERT_FALSE(ec2);
 	ASSERT_FALSE(ec3);
 }
+

@@ -108,6 +108,25 @@ public:
 		open(url, ec);
 		throw_database_error(ec);
 	}
+	void exec(const std::string & query, boost::system::error_code & ec)
+	{
+		int result;
+		result = sqlite3_exec(conn_.get(), query.c_str(), NULL, NULL, NULL);
+		if (result == SQLITE_BUSY)
+		{
+			assert(false && "Unsupported"); // TODO: Implement reexec transparent to the callee.
+		}
+		else if (result == SQLITE_ERROR || result == SQLITE_MISUSE)
+		{
+			ec.assign(result, get_error_category());
+		}
+	}
+	void exec(const ::std::string & query)
+	{
+		boost::system::error_code ec;
+		exec(query, ec);
+		throw_database_error(ec);
+	}
 private:
 	/**
 	 * Open database connection in blocking mode.
@@ -161,16 +180,7 @@ private:
 	void async_exec_task(const ::std::string & query, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
 	{
 		boost::system::error_code ec;
-		int result;
-		result = sqlite3_exec(conn_.get(), query.c_str(), NULL, NULL, NULL);
-		if (result == SQLITE_BUSY)
-		{
-			assert(false && "Unsupported"); // TODO: Implement reexec transparent to the callee.
-		}
-		else if (result == SQLITE_ERROR || result == SQLITE_MISUSE)
-		{
-			ec.assign(result, get_error_category());
-		}
+		exec(query, ec);
 		io_service_.post(boost::bind(handler, ec));
 	}
 	template <typename HandlerT>
