@@ -54,23 +54,37 @@ public:
 	 * @param handler Handler to be called for each row.
 	 */
 	template <typename EachHandler>
-	void async_exec(const ::std::string & query, EachHandler handler)
+	void async_fetch(const ::std::string & query, EachHandler handler)
 	{
 		processing_service_.post(boost::bind(
-			&database::async_exec_task<boost::_bi::protected_bind_t<EachHandler> >,
+			&database::async_fetch_task<boost::_bi::protected_bind_t<EachHandler> >,
 			this,
 			query,
 			boost::make_shared<boost::asio::io_service::work>(boost::ref(io_service_)),
 			boost::protect(handler)));
 	}
-private:
 	/**
-	 * Open database connection in blocking mode.
+	 * Execute query. Run callback after statement was executed.
+	 * @param query Query
+	 * @param handler Handler to be called after query was executed.
 	 */
-	template <typename HandlerT>
-	void async_open_task(std::string url, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
+	template <typename ExecHandler>
+	void async_exec(const ::std::string & query, ExecHandler handler)
 	{
-		boost::system::error_code ec;
+		processing_service_.post(boost::bind(
+			&database::async_exec_task<boost::_bi::protected_bind_t<ExecHandler> >,
+			this,
+			query,
+			boost::make_shared<boost::asio::io_service::work>(boost::ref(io_service_)),
+			boost::protect(handler)));
+	}
+	/**
+	 * Non throwing version of blocking database open.
+	 * @param url URL address of database.
+	 * @param ec Error code 
+	 */
+	void open(const ::std::string & url, boost::system::error_code & ec)
+	{
 		int result;
 		struct sqlite3 * conn = NULL;
 		if ((result = sqlite3_open(url.c_str(), &conn)) != SQLITE_OK)
@@ -83,6 +97,26 @@ private:
 			ec.assign(SQLITE_NOMEM, get_error_category());
 		}
 		conn_.reset(conn, &sqlite3_close);
+	}
+	/**
+	 * Throwing version fo blocking database open.
+	 * @param url URL address of database.
+	 */
+	void open(const ::std::string & url)
+	{
+		boost::system::error_code ec;
+		open(url, ec);
+		throw_database_error(ec);
+	}
+private:
+	/**
+	 * Open database connection in blocking mode.
+	 */
+	template <typename HandlerT>
+	void async_open_task(const ::std::string & url, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
+	{
+		boost::system::error_code ec;
+		open(url, ec);
 		io_service_.post(boost::bind(handler, ec));
 	}
 	/**
@@ -107,17 +141,37 @@ private:
 	 * or for each row in the result.
 	 */
 	template <typename HandlerT>
+	void async_fetch_task(const ::std::string & query, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
+	{
+		boost::scoped_ptr<baton<HandlerT> > btn(new baton<HandlerT>(this, handler));
+		int result = sqlite3_exec(conn_.get(), query.c_str(), &exec_callback<HandlerT>, btn.get(), NULL);
+		if (result == SQLITE_ERROR || result == SQLITE_MISUSE)
+		{
+			// Construct error object holding details
+			boost::system::error_code ec;
+			ec.assign(result, get_error_category());
+			io_service_.post(boost::bind(handler, ec));
+		}
+		else if (result == SQLITE_BUSY)
+		{
+			assert(false && "Unsupported");
+		}
+	}
+	template <typename HandlerT>
 	void async_exec_task(const ::std::string & query, boost::shared_ptr<boost::asio::io_service::work> work, HandlerT handler)
 	{
 		boost::system::error_code ec;
 		int result;
-		boost::scoped_ptr<baton<HandlerT> > btn(new baton<HandlerT>(this, handler));
-		if ((result = sqlite3_exec(conn_.get(), query.c_str(), &exec_callback<HandlerT>, btn.get(), NULL)) != SQLITE_OK)
+		result = sqlite3_exec(conn_.get(), query.c_str(), NULL, NULL, NULL);
+		if (result == SQLITE_BUSY)
+		{
+			assert(false && "Unsupported"); // TODO: Implement reexec transparent to the callee.
+		}
+		else if (result == SQLITE_ERROR || result == SQLITE_MISUSE)
 		{
 			ec.assign(result, get_error_category());
-			io_service_.post(boost::bind(handler, ec));
-			return;
 		}
+		io_service_.post(boost::bind(handler, ec));
 	}
 	template <typename HandlerT>
 	static int exec_callback(void * data, int columns, char ** values, char ** column_names)
@@ -128,6 +182,17 @@ private:
 		boost::system::error_code ec;
 		btn->self->io_service_.post(boost::bind(btn->handler, ec));
 		return 0;
+	}
+	/**
+	 * Throws exception with detailed SQLite error.
+	 * @param ec Error code
+	 */
+	inline void throw_database_error(const boost::system::error_code & ec) const
+	{
+		if (ec)
+		{
+			throw boost::system::system_error(ec, ::sqlite3_errmsg(conn_.get()));
+		}
 	}
 	/** Results of blocking methods are posted here */
 	boost::asio::io_service & io_service_;

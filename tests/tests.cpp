@@ -33,6 +33,14 @@ struct ServiceTest : ::testing::Test
 	services::sqlite::database database;
 };
 
+struct ServiceTestMemory : ServiceTest
+{
+	ServiceTestMemory()
+	{
+		database.open(":memory:");
+	}
+};
+
 using ::testing::SaveArg;
 using ::testing::DoAll;
 using ::testing::Invoke;
@@ -50,7 +58,31 @@ TEST_F (ServiceTest, AsyncOpen)
 	ASSERT_FALSE(ec);
 }
 
-TEST_F (ServiceTest, ExecuteInvalidQuery)
+TEST_F (ServiceTest, UnableToExecuteQuery)
+{
+	boost::system::error_code ec;
+	EXPECT_CALL(client, handle_exec(_))
+		.WillOnce(DoAll(
+			SaveArg<0>(&ec),
+			Invoke(boost::bind(&boost::asio::io_service::stop, &io_service))));
+	database.async_exec("CREATE TABLE asdf (value1, value2, value3)", boost::bind(&Client::handle_exec, &client, boost::asio::placeholders::error()));
+	io_service.run();
+	ASSERT_TRUE(ec);
+}
+
+TEST_F (ServiceTest, UnableToFetchQuery)
+{
+	boost::system::error_code ec;
+	EXPECT_CALL(client, handle_exec(_))
+		.WillOnce(DoAll(
+			SaveArg<0>(&ec),
+			Invoke(boost::bind(&boost::asio::io_service::stop, &io_service))));
+	database.async_fetch("SELECT 1", boost::bind(&Client::handle_exec, &client, boost::asio::placeholders::error()));
+	io_service.run();
+	ASSERT_TRUE(ec);
+}
+
+TEST_F (ServiceTestMemory, ExecuteInvalidQuery)
 {
 	boost::system::error_code ec;
 	EXPECT_CALL(client, handle_exec(_))
@@ -60,17 +92,36 @@ TEST_F (ServiceTest, ExecuteInvalidQuery)
 	database.async_exec("this is invalid query", boost::bind(&Client::handle_exec, &client, boost::asio::placeholders::error()));
 	io_service.run();
 	ASSERT_TRUE(ec);
-	EXPECT_EQ("library routine called out of sequence", ec.message());
+	EXPECT_EQ("SQL logic error or missing database", ec.message());
 }
 
-TEST_F (ServiceTest, ExecuteSimpleQuery)
+TEST_F (ServiceTestMemory, ExecuteSimpleQuery)
 {
 	boost::system::error_code ec;
 	EXPECT_CALL(client, handle_exec(_))
 		.WillOnce(DoAll(
 			SaveArg<0>(&ec),
 			Invoke(boost::bind(&boost::asio::io_service::stop, &io_service))));
-	database.async_exec("SELECT 1", boost::bind(&Client::handle_exec, &client, boost::asio::placeholders::error()));
+	database.async_fetch("SELECT 1", boost::bind(&Client::handle_exec, &client, boost::asio::placeholders::error()));
 	io_service.run();
-	ASSERT_TRUE(ec);
+	ASSERT_FALSE(ec) << ec.message();
+}
+
+TEST_F (ServiceTestMemory, FetchMultipleRows)
+{
+	::testing::InSequence seq;
+	boost::system::error_code ec1, ec2, ec3;
+	EXPECT_CALL(client, handle_exec(_))
+		.WillOnce(SaveArg<0>(&ec1));
+	EXPECT_CALL(client, handle_exec(_))
+		.WillOnce(SaveArg<0>(&ec2));
+	EXPECT_CALL(client, handle_exec(_))
+		.WillOnce(DoAll(
+			SaveArg<0>(&ec3),
+			Invoke(boost::bind(&boost::asio::io_service::stop, &io_service))));
+	database.async_fetch("SELECT 1 UNION SELECT 2 UNION SELECT 3", boost::bind(&Client::handle_exec, &client, boost::asio::placeholders::error()));
+	io_service.run();
+	ASSERT_FALSE(ec1);
+	ASSERT_FALSE(ec2);
+	ASSERT_FALSE(ec3);
 }
