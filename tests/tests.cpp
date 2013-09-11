@@ -4,7 +4,8 @@
 #include "sqlite_service/sqlite_service.hpp"
 
 /**
-	* Mock handlers */
+ * Mock handlers
+ */
 struct Client
 {
 	MOCK_METHOD1(handle_open, void(const boost::system::error_code & /* ec */));
@@ -46,6 +47,11 @@ using ::testing::SaveArg;
 using ::testing::DoAll;
 using ::testing::Invoke;
 using ::testing::_;
+using ::testing::StrEq;
+using ::testing::Return;
+using ::testing::NotNull;
+
+ACTION_P(SetPointer1, n) { return *arg1 = n; }
 
 TEST_F (ServiceTest, AsyncOpen)
 {
@@ -126,4 +132,3 @@ TEST_F (ServiceTestMemory, FetchMultipleRows)
 	ASSERT_FALSE(ec2);
 	ASSERT_FALSE(ec3);
 }
-
