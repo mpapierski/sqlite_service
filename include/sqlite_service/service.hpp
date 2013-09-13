@@ -130,6 +130,19 @@ public:
 	{
 		return statement<TupleT>(conn_, query);
 	}
+	template <typename TupleT, typename HandlerT>
+	void async_prepare(const ::std::string & query, HandlerT handler)
+	{
+		processing_service_.post(boost::bind(
+			&database::async_prepare_task<
+				TupleT,
+				boost::_bi::protected_bind_t<HandlerT>
+			>,
+			this,
+			query,
+			boost::make_shared<boost::asio::io_service::work>(boost::ref(io_service_)),
+			boost::protect(handler)));
+	}
 private:
 	/**
 	 * Open database connection in blocking mode.
@@ -195,6 +208,14 @@ private:
 		boost::system::error_code ec;
 		btn->self->io_service_.post(boost::bind(btn->handler, ec));
 		return 0;
+	}
+	template <typename TupleT, typename HandlerT>
+	void async_prepare_task(const ::std::string & query,
+		boost::shared_ptr<boost::asio::io_service::work> work,
+		HandlerT handler)
+	{
+		statement<TupleT> stmt = prepare<TupleT>(query);
+		io_service_.post(boost::bind(handler, stmt));
 	}
 	/**
 	 * Throws exception with detailed SQLite error.

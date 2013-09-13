@@ -6,10 +6,12 @@
 /**
  * Mock handlers
  */
+
 struct Client
 {
 	MOCK_METHOD1(handle_open, void(const boost::system::error_code & /* ec */));
 	MOCK_METHOD1(handle_exec, void(const boost::system::error_code & /* ec */));
+	MOCK_METHOD1(handle_prepare, void(services::sqlite::statement<boost::tuple<int, std::string> >));
 };
 
 struct ServiceTest : ::testing::Test
@@ -170,4 +172,28 @@ TEST_F (ServiceTestMemory, PrepareTestMultiRow)
 	ok = stmt.fetch(row);
 	ASSERT_FALSE(ok);
 	EXPECT_EQ(std::string(), boost::get<0>(row));
+}
+
+TEST_F (ServiceTestMemory, AsyncPrepareStatement)
+{
+	typedef boost::tuple<int, std::string> row_t;
+	services::sqlite::statement<row_t> stmt;
+	EXPECT_CALL(client, handle_prepare(_))
+		.WillOnce(DoAll(SaveArg<0>(&stmt), Invoke(boost::bind(&boost::asio::io_service::stop, &io_service))));
+	database.async_prepare<row_t>("SELECT 1", boost::bind(&Client::handle_prepare, &client, _1));
+	io_service.run();
+	ASSERT_FALSE(stmt.error());
+	EXPECT_EQ(std::string(), stmt.last_error());
+}
+
+TEST_F (ServiceTestMemory, AsyncPrepareStatementFailure)
+{
+	typedef boost::tuple<int, std::string> row_t;
+	services::sqlite::statement<row_t> stmt;
+	EXPECT_CALL(client, handle_prepare(_))
+		.WillOnce(DoAll(SaveArg<0>(&stmt), Invoke(boost::bind(&boost::asio::io_service::stop, &io_service))));
+	database.async_prepare<row_t>("I dont know what I am doing", boost::bind(&Client::handle_prepare, &client, _1));
+	io_service.run();
+	ASSERT_TRUE(stmt.error());
+	EXPECT_EQ(std::string("near \"I\": syntax error"), stmt.last_error());
 }
