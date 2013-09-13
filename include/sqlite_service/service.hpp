@@ -11,8 +11,6 @@
 #include <boost/make_shared.hpp>
 #include <sqlite3.h>
 
-#include "sqlite_service/detail/error.hpp"
-
 namespace services { namespace sqlite {
 
 class database
@@ -126,6 +124,11 @@ public:
 		boost::system::error_code ec;
 		exec(query, ec);
 		throw_database_error(ec);
+	}
+	template <typename TupleT>
+	statement<TupleT> prepare(const ::std::string & query)
+	{
+		return statement<TupleT>(conn_, query);
 	}
 private:
 	/**

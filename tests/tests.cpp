@@ -132,3 +132,42 @@ TEST_F (ServiceTestMemory, FetchMultipleRows)
 	ASSERT_FALSE(ec2);
 	ASSERT_FALSE(ec3);
 }
+
+TEST_F (ServiceTestMemory, PrepareTest)
+{
+	boost::system::error_code ec;
+	typedef boost::tuple<int, long, boost::uint64_t, std::string, std::string> result_t;
+	services::sqlite::statement<result_t> stmt = database.prepare<result_t>("SELECT 1, 2, 3, 'hello world', NULL");
+	bool ok;
+	result_t row;
+	ok = stmt.fetch(row);
+	ASSERT_TRUE(ok);
+	EXPECT_EQ(1, boost::get<0>(row));
+	EXPECT_EQ(2, boost::get<1>(row));
+	EXPECT_EQ(3, boost::get<2>(row));
+	EXPECT_EQ("hello world", boost::get<3>(row));
+	EXPECT_EQ(std::string(), boost::get<4>(row));
+	ok = stmt.fetch(row);
+	ASSERT_FALSE(ok);
+}
+
+TEST_F (ServiceTestMemory, PrepareTestMultiRow)
+{
+	boost::system::error_code ec;
+	typedef boost::tuple<std::string> result_t;
+	services::sqlite::statement<result_t> stmt = database.prepare<result_t>(
+		"SELECT 'hello' UNION "
+		"SELECT 'world'");
+	bool ok;
+	result_t row;
+	ok = stmt.fetch(row);
+	ASSERT_TRUE(ok);
+	EXPECT_EQ("hello", boost::get<0>(row));
+	boost::get<0>(row).clear();
+	ok = stmt.fetch(row);
+	EXPECT_EQ("world", boost::get<0>(row));
+	boost::get<0>(row).clear();
+	ok = stmt.fetch(row);
+	ASSERT_FALSE(ok);
+	EXPECT_EQ(std::string(), boost::get<0>(row));
+}
