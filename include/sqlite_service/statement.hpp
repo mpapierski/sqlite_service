@@ -21,7 +21,6 @@ class service;
 /**
  * Statement wrapper
  */
-template <typename TupleType>
 class statement
 {
 private:
@@ -32,7 +31,6 @@ private:
 		assert(result == SQLITE_OK && "Statement is not finalized.");
 	}
 public:
-	typedef TupleType tuple_type;
 	statement()
 	{
 	}
@@ -56,7 +54,8 @@ public:
 		assert(stmt_ && "Statement is NULL");
 		return sqlite3_step(stmt_.get());
 	}
-	bool fetch(tuple_type & results)
+	template <typename TupleType>
+	bool fetch(TupleType & results)
 	{
 		int result = step();
 		if (result == SQLITE_ROW)
