@@ -13,6 +13,7 @@
 #include "sqlite3.h"
 
 #include "aux/assign_columns.hpp"
+#include "aux/bind_params.hpp"
 
 namespace services { namespace sqlite {
 
@@ -64,6 +65,12 @@ public:
 			boost::fusion::for_each(results, aux::assign_columns(stmt_, index));
 		}
 		return result == SQLITE_ROW;
+	}
+	template <typename TupleType>
+	void bind_params(TupleType bind_args)
+	{
+		int index = 1;
+		boost::fusion::for_each(bind_args, aux::bind_params(stmt_, index));
 	}
 	inline const ::std::string & last_error() const
 	{
