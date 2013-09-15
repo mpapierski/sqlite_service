@@ -13,7 +13,7 @@ struct bind_params
 	{
 	}
 	template <typename T>
-	typename boost::enable_if<
+	inline typename boost::enable_if<
 		boost::type_traits::ice_and<
 			boost::is_arithmetic<T>::value,
 			(sizeof(T) != sizeof(sqlite3_int64))
@@ -26,7 +26,7 @@ struct bind_params
 		assert(result == SQLITE_OK && "SQLite misuse");
 	}
 	template <typename T>
-	typename boost::enable_if<
+	inline typename boost::enable_if<
 		boost::type_traits::ice_and<
 			boost::is_arithmetic<T>::value,
 			(sizeof(T) == sizeof(sqlite3_int64))
@@ -38,17 +38,17 @@ struct bind_params
 		int result = sqlite3_bind_int64(stmt_.get(), index, t);
 		assert(result == SQLITE_OK && "SQLite misuse");
 	}
-	void bind(int index, const char * t) const
+	inline void bind(int index, const char * t) const
 	{
 		int result = sqlite3_bind_text(stmt_.get(), index, t, -1, SQLITE_TRANSIENT);
 		assert(result == SQLITE_OK && "SQLite misuse");
 	}
-	void bind(int index, const std::string & t) const
+	inline void bind(int index, const std::string & t) const
 	{
 		int result = sqlite3_bind_text(stmt_.get(), index, t.c_str(), t.size(), SQLITE_TRANSIENT);
 		assert(result == SQLITE_OK && "SQLite misuse");
 	}
-	int lookup(const char * key) const
+	inline int lookup(const char * key) const
 	{
 		int result = ::sqlite3_bind_parameter_index(stmt_.get(), key);
 		assert(result > 0 && "Unknown parameter name");
@@ -67,7 +67,7 @@ struct bind_params
 		bind(idx, args.second);
 	}
 	template <typename T>
-	void operator()(const T & t) const
+	inline void operator()(const T & t) const
 	{
 		bind(index_++, t);
 	}

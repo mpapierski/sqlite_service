@@ -219,6 +219,26 @@ TEST_F (ServiceTestMemory, BlockingPrepareStatementWithNamedBind)
 	EXPECT_EQ("hello world", boost::get<1>(row));
 }
 
+TEST_F (ServiceTestMemory, BlockingPrepareStatementWithNamedBindStrings)
+{
+	std::string p1 = ":param1";
+	std::string p2 = ":param2";
+	typedef boost::tuple<int, std::string> row_t;
+	services::sqlite::statement stmt;
+	stmt = database.prepare("SELECT :param1 + 1, 'hello ' || :param2");
+	stmt.bind_params(boost::make_tuple(
+		std::make_pair(p1, 41),
+		std::make_pair(p2, "world")
+	));
+	ASSERT_FALSE(stmt.error());
+	EXPECT_EQ(std::string(), stmt.last_error());
+	row_t row;
+	bool ok = stmt.fetch(row);
+	EXPECT_TRUE(ok);
+	EXPECT_EQ(42, boost::get<0>(row));
+	EXPECT_EQ("hello world", boost::get<1>(row));
+}
+
 TEST_F (ServiceTestMemory, AsyncPrepareStatementFailure)
 {
 	typedef boost::tuple<int, std::string> row_t;
