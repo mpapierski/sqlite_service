@@ -41,7 +41,7 @@ public:
 		assert(conn_ && "NULL connection!");
 		int result;
 		struct sqlite3_stmt * stmt = NULL;
-		if ((result = sqlite3_prepare(conn_.get(), query.c_str(), -1, &stmt, NULL)) != SQLITE_OK)
+		if ((result = sqlite3_prepare_v2(conn_.get(), query.c_str(), -1, &stmt, NULL)) != SQLITE_OK)
 		{
 			ec_.assign(result, get_error_category());
 			last_error_ = ::sqlite3_errmsg(conn_.get());

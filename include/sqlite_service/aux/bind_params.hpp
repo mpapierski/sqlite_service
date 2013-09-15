@@ -20,9 +20,9 @@ struct bind_params
 		>,
 		void
 	>::type
-	operator()(const T & t) const
+	bind(int index, const T & t) const
 	{
-		int result = sqlite3_bind_int(stmt_.get(), index_++, t);
+		int result = sqlite3_bind_int(stmt_.get(), index, t);
 		assert(result == SQLITE_OK && "SQLite misuse");
 	}
 	template <typename T>
@@ -33,22 +33,45 @@ struct bind_params
 		>,
 		void
 	>::type
-	operator()(const T & t) const
+	bind(int index, const T & t) const
 	{
-		int result = sqlite3_bind_int64(stmt_.get(), index_++, t);
+		int result = sqlite3_bind_int64(stmt_.get(), index, t);
 		assert(result == SQLITE_OK && "SQLite misuse");
 	}
-	void operator()(const char * t) const
+	void bind(int index, const char * t) const
 	{
-		int result = sqlite3_bind_text(stmt_.get(), index_++, t, -1, SQLITE_TRANSIENT);
+		int result = sqlite3_bind_text(stmt_.get(), index, t, -1, SQLITE_TRANSIENT);
 		assert(result == SQLITE_OK && "SQLite misuse");
 	}
-	void operator()(const std::string & t) const
+	void bind(int index, const std::string & t) const
 	{
-		assert(false);
-		int result = sqlite3_bind_text(stmt_.get(), index_++, t.c_str(), t.size(), SQLITE_TRANSIENT);
+		int result = sqlite3_bind_text(stmt_.get(), index, t.c_str(), t.size(), SQLITE_TRANSIENT);
 		assert(result == SQLITE_OK && "SQLite misuse");
 	}
+	int lookup(const char * key) const
+	{
+		int result = ::sqlite3_bind_parameter_index(stmt_.get(), key);
+		assert(result > 0 && "Unknown parameter name");
+		return result;
+	}
+	template <typename T>
+	void operator()(const std::pair<const char *, T> & args) const
+	{
+		int idx = lookup(args.first);
+		bind(idx, args.second);
+	}
+	template <typename T>
+	void operator()(const std::pair<std::string, T> & args) const
+	{
+		int idx = lookup(args.first.c_str());
+		bind(idx, args.second);
+	}
+	template <typename T>
+	void operator()(const T & t) const
+	{
+		bind(index_++, t);
+	}
+
 };
 
 }

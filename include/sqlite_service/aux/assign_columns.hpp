@@ -3,10 +3,9 @@
 
 namespace services { namespace sqlite { namespace aux {
 
-struct assign_columns
+class assign_columns
 {
-	boost::shared_ptr<struct sqlite3_stmt> & stmt_;
-	int & index_;
+public:
 	assign_columns(boost::shared_ptr<struct sqlite3_stmt> & stmt, int & index)
 		: stmt_(stmt)
 		, index_(index)
@@ -58,8 +57,10 @@ struct assign_columns
 			t = reinterpret_cast<const char *>(text);
 		}
 	}
+private:
+	boost::shared_ptr<struct sqlite3_stmt> & stmt_;
+	int & index_;
 };
-
 }
 
 }
