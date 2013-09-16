@@ -250,3 +250,15 @@ TEST_F (ServiceTestMemory, AsyncPrepareStatementFailure)
 	ASSERT_TRUE(stmt.error());
 	EXPECT_EQ(std::string("near \"I\": syntax error"), stmt.last_error());
 }
+
+TEST_F (ServiceTestMemory, AsyncPrepareStatementSuccess)
+{
+	typedef boost::tuple<int, std::string> row_t;
+	services::sqlite::statement stmt;
+	EXPECT_CALL(client, handle_prepare(_))
+		.WillOnce(DoAll(SaveArg<0>(&stmt), Invoke(boost::bind(&boost::asio::io_service::stop, &io_service))));
+	database.async_prepare("SELECT 1, 2, 3, 4, 5", boost::bind(&Client::handle_prepare, &client, _1));
+	io_service.run();
+	ASSERT_FALSE(stmt.error());
+	EXPECT_EQ(std::string(), stmt.last_error());
+}
