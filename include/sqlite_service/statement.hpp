@@ -79,7 +79,7 @@ public:
 	{
 		return last_error_;
 	}
-	boost::system::error_code & error()
+	const boost::system::error_code & error() const
 	{
 		return ec_;
 	}

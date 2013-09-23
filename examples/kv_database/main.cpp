@@ -10,9 +10,10 @@ class connection
 {
 public:
 	typedef boost::shared_ptr<connection> pointer;
-	static pointer create(boost::asio::io_service & io_service)
+	static pointer create(boost::asio::io_service & io_service,
+		services::sqlite::database & db)
 	{
-		return pointer(new connection(io_service));
+		return pointer(new connection(io_service, db));
 	}
 	inline tcp::socket & socket()
 	{
@@ -20,6 +21,7 @@ public:
 	}
 	void start_read()
 	{
+		std::cout << "start read" << std::endl;
 		boost::asio::async_read_until(
 			socket_,
 			buffer_,
@@ -40,7 +42,10 @@ public:
 				handle_line(line);
 			}
 			start_read();
-			return;
+		}
+		else
+		{
+			std::cerr << error.message() << std::endl;
 		}
 	}
 	void handle_line(const std::string & input)
@@ -48,22 +53,56 @@ public:
 		std::cout << "Received: " << input << std::endl;
 		std::istringstream iss(input);
 		std::string method, key, value;
-		iss >> method >> key >> value;
-		if (method == "GET" && !key.empty() && !value.empty())
+		iss >> method >> key;
+		if (method == "GET" && !key.empty())
 		{
-
+			db_.async_prepare("SELECT value FROM storage WHERE key = ?",
+				boost::bind(&connection::handle_prepare, shared_from_this(), key, _1));
 		}
 	}
+	void handle_prepare(::std::string key,
+		services::sqlite::statement stmt)
+	{
+		if (stmt.error())
+		{
+			std::cerr << "NOT PREPARED" << std::endl;
+			return;	
+		}
+		stmt.bind_params(boost::make_tuple(key));
+		stmt.async_fetch<boost::tuple<std::string> >(
+			boost::bind(&connection::handle_get_result, this,
+				boost::asio::placeholders::error(),
+				_2));
+	}
+	void handle_get_result(const boost::system::error_code & err, boost::tuple<std::string> row)
+	{
+		if (err)
+		{
+			std::cerr << "Unable to retrieve result set" << std::endl;
+			return;
+		}
+		boost::asio::async_write(socket_, boost::asio::buffer(boost::get<0>(row) + "\r\n"),
+			boost::bind(&connection::handle_write, shared_from_this(),
+				boost::asio::placeholders::error(),
+				boost::asio::placeholders::bytes_transferred()));
+	}
+	void handle_write(const boost::system::error_code& error,
+		std::size_t bytes_transferred)
+	{
+	} 
 private:
-	connection(boost::asio::io_service & io_service)
+	connection(boost::asio::io_service & io_service,
+			services::sqlite::database & db)
 		: io_service_(io_service)
 		, socket_(io_service_)
+		, db_(db)
 	{
 
 	}
 	boost::asio::io_service & io_service_;
 	tcp::socket socket_;
 	boost::asio::streambuf buffer_;
+	services::sqlite::database & db_;
 };
 
 class storage
@@ -82,7 +121,7 @@ public:
 	}
 	void start_accept()
 	{
-		connection::pointer new_connection = connection::create(io_service_);
+		connection::pointer new_connection = connection::create(io_service_, db_);
 		acceptor_.async_accept(new_connection->socket(),
 			boost::bind(&storage::handle_accept, this,
 			new_connection,
@@ -127,6 +166,7 @@ public:
 			std::cerr << "Unable to accept new connection: " << ec.message() << '.' << std::endl;
 			return;
 		}
+		std::cout << "New connection." << std::endl;
 		new_connection->start_read();
 		start_accept();
 	}
