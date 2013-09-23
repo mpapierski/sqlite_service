@@ -127,10 +127,10 @@ public:
 	}
 	statement prepare(const ::std::string & query)
 	{
-		return statement(conn_, query);
+		return statement(io_service_, conn_, query);
 	}
 	template <typename HandlerT>
-	void async_prepare(const ::std::string & query, HandlerT handler)
+	void async_prepare(const ::std::string & query, const HandlerT & handler)
 	{
 		processing_service_.post(boost::bind(
 			&database::async_prepare_task<
@@ -212,7 +212,7 @@ private:
 		boost::shared_ptr<boost::asio::io_service::work> work,
 		HandlerT handler)
 	{
-		statement stmt = prepare(query);
+		statement stmt(prepare(query));
 		io_service_.post(boost::bind(handler, stmt));
 	}
 	/**

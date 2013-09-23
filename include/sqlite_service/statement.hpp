@@ -10,6 +10,7 @@
 #include <boost/fusion/include/boost_tuple.hpp>
 #include <boost/type_traits.hpp>
 #include <boost/utility.hpp>
+#include <boost/ref.hpp>
 #include "sqlite3.h"
 
 #include "aux/assign_columns.hpp"
@@ -32,11 +33,13 @@ private:
 		assert(result == SQLITE_OK && "Statement is not finalized.");
 	}
 public:
-	statement()
+	statement(boost::asio::io_service & io_svc)
+		: io_service_(io_svc)
 	{
 	}
-	statement(boost::shared_ptr<struct sqlite3> conn, const ::std::string & query)
-		: conn_(conn)
+	statement(boost::asio::io_service & io_svc, boost::shared_ptr<struct sqlite3> conn, const ::std::string & query)
+		: io_service_(io_svc)
+		, conn_(conn)
 	{
 		assert(conn_ && "NULL connection!");
 		int result;
@@ -50,7 +53,7 @@ public:
 		assert(stmt && "Statement is not prepared.");
 		stmt_.reset(stmt, &safe_sqlite3_finalize);
 	}
-	int step()
+	int step() const
 	{
 		assert(stmt_ && "Statement is NULL");
 		return sqlite3_step(stmt_.get());
@@ -80,11 +83,30 @@ public:
 	{
 		return ec_;
 	}
+	template <typename ResultT, typename HandlerT>
+	void async_fetch(HandlerT handler) const
+	{
+		int index = 0;
+		int result = SQLITE_MISUSE;
+		boost::system::error_code ec;
+		ResultT row;
+		while (stmt_ && (result = step()) == SQLITE_ROW)
+		{
+			boost::fusion::for_each(row, aux::assign_columns(stmt_, index));
+			handler(ec, row);
+		}
+		if (result != SQLITE_DONE)
+		{
+			ec.assign(result, get_error_category());
+			handler(ec, row);
+		}
+	}
 private:
+	boost::reference_wrapper<boost::asio::io_service> io_service_;
 	boost::shared_ptr<struct sqlite3> conn_;
 	boost::shared_ptr<struct sqlite3_stmt> stmt_;
 	boost::system::error_code ec_;
-	std::string last_error_;
+	mutable std::string last_error_;
 };
 
 }
